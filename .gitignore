@@ -1,0 +1,26 @@
+# Secrets / credentials — never commit these
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Data & run artifacts
+literature_screening/data/raw/
+literature_screening/data/processed/
+literature_screening/data/output/
+literature_screening/logs/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+data/raw/*.json
