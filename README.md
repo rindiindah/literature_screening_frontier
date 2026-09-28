@@ -1,161 +1,150 @@
 # Semi-Automated Literature Screening — Multi-Database
 
-Sistem bantu **retrieval → normalisasi → deduplikasi → filtering →
-screening semi-manual (Include/Exclude) → ekspor `included.bib` +
-statistik + log reproducibility**, untuk revisi mini-review Frontiers
+A support system for **retrieval → normalization → deduplication → filtering → semi-manual screening (Include/Exclude) → export of `included.bib` + statistics + reproducibility logs**, developed to support the revision of the Frontiers mini-review:
+
 *"Multimodal Intelligence for Air Quality Modeling"*.
 
-**Lima database final:** IEEE Xplore (import-only), OpenAlex (API),
-Crossref (API), Scopus (API bila kredensial ada / import manual
-sementara), Web of Science (API bila kredensial ada / import manual
-sementara). Sistem **hanya membantu** — keputusan akademik akhir tetap
-di tangan peneliti.
+**Five final databases:** IEEE Xplore (import-only), OpenAlex (API), Crossref (API), Scopus (API when credentials are available / manual import temporarily), and Web of Science (API when credentials are available / manual import temporarily).
+
+The system **only provides support** — final academic decisions remain with the researcher.
 
 ---
 
-## 1. Instalasi (Windows)
+## 1. Installation (Windows)
 
-1. Install Python 3.10+ dari [python.org](https://www.python.org/downloads/)
-   (centang "Add Python to PATH" saat instalasi).
-2. Buka **Command Prompt** atau **PowerShell**, lalu masuk ke folder proyek:
+1. Install Python 3.10+ from [python.org](https://www.python.org/downloads/)
+   (check "Add Python to PATH" during installation).
+
+2. Open **Command Prompt** or **PowerShell**, then navigate to the project folder:
 
    ```powershell
    cd path\ke\literature_screening
    ```
 
-3. (Disarankan) Buat virtual environment:
+3. (Recommended) Create a virtual environment:
 
    ```powershell
    python -m venv venv
    venv\Scripts\activate
    ```
 
-4. Install dependency:
+4. Install the dependencies:
 
    ```powershell
    pip install -r requirements.txt
    ```
 
-5. Salin `.env.example` menjadi `.env`, lalu isi email/API key Anda:
+5. Copy `.env.example` to `.env`, then enter your email/API keys:
 
    ```powershell
    copy .env.example .env
    notepad .env
    ```
 
-   Minimal isi:
-   - `OPENALEX_MAILTO` = email Anda (wajib untuk polite pool; `OPENALEX_API_KEY` opsional).
-   - `CROSSREF_MAILTO` = email Anda (wajib).
-   - `SCOPUS_API_KEY`, `SCOPUS_INSTTOKEN` = kosongkan bila belum ada izin.
-   - `WOS_API_KEY` = kosongkan bila belum ada izin.
+   Minimum configuration:
 
-   **Jangan pernah commit file `.env` (isi asli) ke Git.**
+   * `OPENALEX_MAILTO` = your email (required for the polite pool; `OPENALEX_API_KEY` is optional).
+   * `CROSSREF_MAILTO` = your email (required).
+   * `SCOPUS_API_KEY`, `SCOPUS_INSTTOKEN` = leave empty if access has not been granted.
+   * `WOS_API_KEY` = leave empty if access has not been granted.
+
+   **Never commit your actual `.env` file to Git.**
 
 ---
 
-## 2. Menjalankan Pipeline
+## 2. Running the Pipeline
 
-Jalankan tiap tahap dari folder `literature_screening/`.
+Run each stage from the `literature_screening/` directory.
 
-### Tahap 1 — Ambil data dari OpenAlex & Crossref (dan Scopus/WOS bila ada key)
+### Stage 1 — Retrieve data from OpenAlex & Crossref (and Scopus/WoS when credentials are available)
 
 ```powershell
 python main.py fetch
 ```
 
-- Hanya sumber dengan kredensial tersedia yang benar-benar dipanggil;
-  Scopus/WOS otomatis di-skip dengan pesan jelas bila key kosong.
-- Hasil mentah disimpan di `data/raw/<source>_<tanggal>.json` (raw
-  cache harian — rerun di hari yang sama tidak memanggil API ulang,
-  kecuali pakai `--force-refresh`).
-- Hasil ternormalisasi digabung ke `data/processed/combined_raw_records.json`.
+* Only sources with available credentials are queried.
+  Scopus/WoS are automatically skipped with a clear message when their keys are empty.
+* Raw results are stored in `data/raw/<source>_<date>.json` (daily raw cache — rerunning on the same day does not call the API again unless `--force-refresh` is used).
+* Normalized results are combined into `data/processed/combined_raw_records.json`.
 
-Opsi:
+Options:
+
 ```powershell
 python main.py fetch --sources openalex crossref
 python main.py fetch --start-year 2024 --end-year 2026 --limit 500
 python main.py fetch --force-refresh
 ```
 
-### Tahap 2 — Impor hasil IEEE final (sudah ada keputusan Include/Exclude)
+### Stage 2 — Import final IEEE results (with existing Include/Exclude decisions)
 
 ```powershell
 python main.py import-ieee --file data\raw\ieee_final_import.bib
 ```
 
-Mendukung `.bib`, `.csv`, `.xlsx`, `.ris`. Kolom `decision` (dan
-opsional `exclusion_reason`, `notes`) pada file akan **dipertahankan**,
-bukan diminta screening ulang.
+Supports `.bib`, `.csv`, `.xlsx`, and `.ris`. The `decision` column (and optional `exclusion_reason` and `notes`) in the file will be **preserved** rather than screened again.
 
-### Tahap 3 — (Opsional, interim) Impor ekspor manual Scopus/WoS
+### Stage 3 — (Optional, interim) Import manual Scopus/WoS exports
 
-Selama kredensial Scopus/WOS API belum ada, ekspor hasil pencarian dari
-portal masing-masing (`.bib`/`.ris`/`.csv`) lalu:
+While Scopus/WoS API credentials are not available, export the search results from the respective portals (`.bib`/`.ris`/`.csv`), then run:
 
 ```powershell
 python main.py import-manual --file data\raw\scopus_export.csv --source Scopus
 python main.py import-manual --file data\raw\wos_export.ris --source WoS
 ```
 
-### Tahap 4 — Filtering + gabung IEEE + Deduplikasi
+### Stage 4 — Filtering + IEEE integration + Deduplication
 
 ```powershell
 python main.py process
 ```
 
-- Filter tahun (`START_YEAR`–`END_YEAR`) & document type (konfigurabel
-  di `config/settings.py`). Record IEEE (sudah punya decision) tidak
-  disaring ulang.
-- Deduplikasi lintas sumber: DOI → judul ternormalisasi → fuzzy title
-  (dengan pencatatan). Hasil disimpan di `data/processed/filtered_records.json`.
-- Pasangan fuzzy confidence-sedang (perlu tinjauan manual) dicatat di
-  `logs/fuzzy_review_log.json`.
+* Filter by year (`START_YEAR`–`END_YEAR`) and document type (configurable in `config/settings.py`). IEEE records with existing decisions are not filtered again.
+* Cross-source deduplication: DOI → normalized title → fuzzy title matching, with matching records logged. Results are saved to `data/processed/filtered_records.json`.
+* Medium-confidence fuzzy matches that require manual review are recorded in `logs/fuzzy_review_log.json`.
 
-### Tahap 5 — Siapkan lembar screening
+### Stage 5 — Prepare the screening sheet
 
 ```powershell
 python main.py prepare-screening
 ```
 
-Menghasilkan:
-- `data/output/screening_results.xlsx` (dengan dropdown Include/Exclude
-  dan daftar exclusion reason) — **buka file ini di Excel dan isi kolom
-  `decision` (dan `exclusion_reason` bila Exclude) untuk tiap paper.**
-- `data/output/screening_results.csv` (alternatif, tanpa dropdown).
+Generates:
 
-Kolom `ai_suggestion` / `ai_reason` (bila AI-assist aktif) hanya
-rekomendasi pendukung — keputusan akhir tetap kolom `decision` yang Anda isi.
+* `data/output/screening_results.xlsx` (with Include/Exclude dropdowns and a list of exclusion reasons) — **open this file in Excel and fill in the `decision` column (and `exclusion_reason` when Exclude) for each paper.**
+* `data/output/screening_results.csv` (alternative format without dropdowns).
 
-### Tahap 6 — Finalisasi: `included.bib` + statistik
+The `ai_suggestion` / `ai_reason` columns (when AI assistance is enabled) are only supporting recommendations — the final decision remains in the `decision` column completed by the researcher.
 
-Setelah selesai mengisi kolom `decision` di Excel, simpan filenya, lalu:
+### Stage 6 — Finalization: `included.bib` + statistics
+
+After completing the `decision` column in Excel, save the file, then run:
 
 ```powershell
 python main.py finalize --file data\output\screening_results.xlsx
 ```
 
-Menghasilkan:
-- `data/output/included.bib` — hanya paper `decision = Include`.
-- `data/output/screening_results.csv` — versi final dengan semua keputusan.
-- `data/output/statistics.json` — statistik per tahap (Bagian 18 spesifikasi).
-- `logs/search_log.json` — log reproducibility tiap run (query aktual, tanggal, jumlah).
+Generates:
 
-### Jalankan semua tahap otomatis sekaligus (fetch → process → prepare-screening)
+* `data/output/included.bib` — only papers with `decision = Include`.
+* `data/output/screening_results.csv` — final version containing all decisions.
+* `data/output/statistics.json` — statistics for each pipeline stage (Section 18 specification).
+* `logs/search_log.json` — reproducibility log for each run (actual query, date, and record count).
+
+### Run all automated stages at once (fetch → process → prepare-screening)
 
 ```powershell
 python main.py run-all
 ```
 
-(Import IEEE/manual dan `finalize` tetap dijalankan terpisah karena
-membutuhkan input dari peneliti.)
+(IEEE/manual imports and `finalize` must still be run separately because they require researcher input.)
 
 ---
 
-## 3. Struktur Folder
+## 3. Folder Structure
 
 ```text
 literature_screening/
-├── config/settings.py          # tahun, master query, kriteria, threshold dedup, path
+├── config/settings.py          # years, master query, criteria, dedup thresholds, paths
 ├── connectors/                 # openalex.py, crossref.py, scopus.py, wos.py
 ├── importers/                  # bibtex_importer.py, ris_importer.py, csv_importer.py
 ├── processing/                 # normalize, filtering, deduplicate, screening, statistics
@@ -169,34 +158,26 @@ literature_screening/
 
 ---
 
-## 4. Catatan Teknis Penting
+## 4. Important Technical Notes
 
-- **OpenAlex**: abstract direkonstruksi dari `abstract_inverted_index`.
-  Bila null di sumber → `abstract = None` (tidak dikarang).
-- **Crossref**: abstract sering kosong (hanya ada bila publisher
-  menyetor JATS XML); bila ada, tag XML dibersihkan otomatis.
-- **Scopus**: Search API tidak menyertakan abstract penuh → diambil
-  lewat Abstract Retrieval API tahap kedua, hanya untuk record yang
-  lolos filter (hemat kuota).
-- **Web of Science**: connector memakai **Starter API** (didokumentasikan
-  di kode) — abstract penuh TIDAK tersedia di tier ini (perlu Expanded API).
-- **IEEE**: import-only, tidak ada connector API. Keputusan final
-  dipertahankan, tidak di-screen ulang.
-- Kredensial kosong (Scopus/WOS) → connector cetak pesan jelas & skip
-  aman; pipeline tetap lanjut ke sumber lain.
-- Semua threshold, kriteria, rentang tahun, dan tipe dokumen yang
-  diizinkan **dapat diedit** di `config/settings.py`.
+* **OpenAlex**: Abstracts are reconstructed from `abstract_inverted_index`. If the source value is null, `abstract = None` is used rather than generating an abstract.
+* **Crossref**: Abstracts are often unavailable and are only included when provided by the publisher through JATS XML. XML tags are automatically removed when an abstract is available.
+* **Scopus**: The Search API does not provide full abstracts. They are retrieved through the Abstract Retrieval API in a second stage, only for records that pass the filtering step to reduce API usage.
+* **Web of Science**: The connector uses the **Starter API** (documented in the code). Full abstracts are NOT available through this tier and require the Expanded API.
+* **IEEE**: Import-only; there is no API connector. Existing final decisions are preserved and the records are not screened again.
+* Empty credentials (Scopus/WoS) → the connector displays a clear message and safely skips the source; the pipeline continues with the other available sources.
+* All thresholds, criteria, year ranges, and allowed document types **can be edited** in `config/settings.py`.
 
 ---
 
-## 5. Statistik yang Dihasilkan (`data/output/statistics.json`)
+## 5. Generated Statistics (`data/output/statistics.json`)
 
 ```text
 IEEE (imported, final):   XXX   (Include: XX / Exclude: XX)
 OpenAlex retrieved:       XXX
 Crossref retrieved:       XXX
-Scopus retrieved:         XXX   (atau: skipped — no credentials)
-WoS retrieved:            XXX   (atau: skipped — no credentials)
+Scopus retrieved:         XXX   (or: skipped — no credentials)
+WoS retrieved:            XXX   (or: skipped — no credentials)
 
 Total retrieved:          XXX
 After year/type filter:   XXX
@@ -206,5 +187,4 @@ Include:                  XXX
 Exclude:                  XXX
 ```
 
-Statistik ini bisa langsung dipakai untuk PRISMA-style flow diagram
-pada manuskrip revisi.
+These statistics can be directly used to create a PRISMA-style flow diagram for the revised manuscript.
